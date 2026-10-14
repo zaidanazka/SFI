@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SICS Gantry Watering V2.0 - Kontrol Irigasi Presisi</title>
+  
+  <!-- Font Standar Bersih & Minimalis -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header Utama -->
+  <header class="navbar">
+    <div class="navbar-container">
+      
+      <!-- Brand & Judul Proyek -->
+      <div class="brand-info">
+        <div class="brand-title-wrap">
+          <a href="../../index.html" class="btn-portal" title="Kembali ke Portal Riset">← Portal Riset</a>
+          <h1 class="brand-title">SICS Gantry Watering</h1>
+          <span class="status-badge offline" id="modeBadge">Menghubungkan...</span>
+        </div>
+      </div>
+
+      <!-- Jam RTC & Tombol Aksi Cepat -->
+      <div class="navbar-actions">
+        <div class="rtc-clock">
+          <span class="rtc-label">RTC DS3231</span>
+          <span class="rtc-time" id="clockTime">-</span>
+          <span class="rtc-date" id="clockDate">-</span>
+        </div>
+
+        <div class="esp-conn-bar">
+          <input type="text" id="inputEspHost" class="ip-input" placeholder="Endpoint (cth: /api/sics.php)">
+          <button class="btn btn-sm btn-primary" id="btnConnectEsp" title="Hubungkan ke Endpoint API SICS">Hubungkan</button>
+        </div>
+
+        <button class="btn-conn" id="btnToggleConn" title="Konfigurasi Koneksi ESP32">
+          <span class="dot-indicator offline" id="connDot"></span>
+          <span id="connText">Menghubungkan...</span>
+        </button>
+
+        <button class="btn btn-estop" id="btnEstop" title="Emergency Stop">
+          E-STOP
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Peringatan E-STOP (Tampil saat Darurat) -->
+  <div class="estop-alert" id="estopAlert" style="display: none;">
+    <div class="estop-alert-inner">
+      <span><strong>PERINGATAN: EMERGENCY STOP AKTIF!</strong> Seluruh gerakan motor dan pompa air dinonaktifkan.</span>
+      <button class="btn btn-sm btn-white" id="btnResetEstop">Reset Sistem</button>
+    </div>
+  </div>
+
+  <!-- Kontainer Dashboard Utama -->
+  <main class="main-layout">
+
+    <!-- BARIS 1: KARTU TELEMETRI & STATUS HARDWARE -->
+    <section class="section-block">
+      <div class="section-header">
+        <h2 class="section-title">Telemetri Sensor & Status Sistem</h2>
+        <span class="text-muted" id="lastUpdated">Sinkronisasi: Menghubungkan...</span>
+      </div>
+
+      <div class="telemetry-grid">
+        
+        <!-- Suhu DHT22 -->
+        <div class="card card-metric">
+          <div class="metric-top">
+            <span class="metric-label">Suhu Udara</span>
+            <span class="pin-tag">DHT22 (Pin 23)</span>
+          </div>
+          <div class="metric-main">
+            <span class="metric-val" id="valTemp">-</span>
+            <span class="metric-unit">&deg;C</span>
+          </div>
+          <div class="metric-bar-bg">
+            <div class="metric-bar-fill" id="barTemp" style="width: 0%;"></div>
+          </div>
+          <div class="metric-sub">Ideal Tanaman: 24.0 - 32.0 &deg;C</div>
+        </div>
+
+        <!-- Kelembapan Udara DHT22 -->
+        <div class="card card-metric">
+          <div class="metric-top">
+            <span class="metric-label">Kelembapan Udara</span>
+            <span class="pin-tag">DHT22 (Pin 23)</span>
+          </div>
+          <div class="metric-main">
+            <span class="metric-val" id="valHum">-</span>
+            <span class="metric-unit">% RH</span>
+          </div>
+          <div class="metric-bar-bg">
+            <div class="metric-bar-fill" id="barHum" style="width: 0%;"></div>
+          </div>
+          <div class="metric-sub">Rentang Normal: 60 - 85% RH</div>
+        </div>
+
+        <!-- Kelembapan Tanah Zona A -->
+        <div class="card card-metric card-zone-a">
+          <div class="metric-top">
+            <span class="metric-label">Tanah Zona A (Baris H - E)</span>
+            <span class="pin-tag">ADC (Pin 34)</span>
+          </div>
+          <div class="metric-main">
+            <span class="badge-soil badge-offline" id="valSoilA">-</span>
+          </div>
+          <div class="metric-sub" id="adcValueA">Nilai ADC: -</div>
+        </div>
+
+        <!-- Kelembapan Tanah Zona B -->
+        <div class="card card-metric card-zone-b">
+          <div class="metric-top">
+            <span class="metric-label">Tanah Zona B (Baris D - A)</span>
+            <span class="pin-tag">ADC (Pin 35)</span>
+          </div>
+          <div class="metric-main">
+            <span class="badge-soil badge-offline" id="valSoilB">-</span>
+          </div>
+          <div class="metric-sub" id="adcValueB">Nilai ADC: -</div>
+        </div>
+
+        <!-- Status Aktuator Fisik & Koordinat Stepper -->
+        <div class="card card-metric card-hardware">
+          <div class="metric-top">
+            <span class="metric-label">Aktuator & Stepper</span>
+            <span class="pin-tag" id="driverStatus">Driver: -</span>
+          </div>
+          
+          <div class="actuator-row">
+            <div class="actuator-col">
+              <span class="act-name">Pompa Air (Pin 27):</span>
+              <strong id="statusPump">-</strong>
+            </div>
+            <div class="actuator-col">
+              <span class="act-name">Motor Stepper:</span>
+              <strong id="statusMotion">-</strong>
+            </div>
+          </div>
+
+          <div class="actuator-row">
+            <div class="actuator-col">
+              <span class="act-name">Posisi Sumbu X:</span>
+              <span class="mono" id="coordX">-</span>
+            </div>
+            <div class="actuator-col">
+              <span class="act-name">Posisi Sumbu Y:</span>
+              <span class="mono" id="coordY">-</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+
+    <!-- BARIS 2: VIRTUAL LCD & TERMINAL LOG SERIAL -->
+    <div class="bottom-grid">
+
+      <!-- Layar Virtual LCD 16x2 & Perintah Telegram -->
+      <section class="card">
+        <div class="card-header">
+          <h3 class="card-title">Tampilan LCD 16x2 & Perintah Bot Telegram</h3>
+          <button class="btn btn-sm btn-outline" id="btnNextLcd">Ganti Mode LCD</button>
+        </div>
+
+        <!-- Virtual LCD 16x2 (hd44780) -->
+        <div class="lcd-box">
+          <div class="lcd-screen">
+            <div class="lcd-text" id="lcdLine1">-</div>
+            <div class="lcd-text" id="lcdLine2">-</div>
+          </div>
+          <div class="lcd-info-row">
+            <span id="lcdModeIndicator">Status: Terputus (-)</span>
+            <span class="text-muted">hd44780 I2C 0x27</span>
+          </div>
+        </div>
+
+        <!-- Konsol Cepat Telegram Bot -->
+        <div class="telegram-box">
+          <div class="telegram-title">Perintah Bot Telegram (/STATUS, /SCAN, /G3, /STOP):</div>
+          <div class="telegram-input-row">
+            <input type="text" id="inputTg" placeholder="Ketik perintah (cth: /STATUS, /G3, /ROW_A)">
+            <button class="btn btn-sm btn-secondary" id="btnSendTg">Kirim</button>
+          </div>
+          <div class="telegram-chips">
+            <button class="chip" data-cmd="/STATUS">/STATUS</button>
+            <button class="chip" data-cmd="/SCAN">/SCAN</button>
+            <button class="chip" data-cmd="/ZONA_A">/ZONA_A</button>
+            <button class="chip" data-cmd="/ZONA_B">/ZONA_B</button>
+            <button class="chip" data-cmd="/HOME">/HOME</button>
+            <button class="chip" data-cmd="/STOP">/STOP</button>
+            <button class="chip" data-cmd="/RESET">/RESET</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Terminal Log Sistem & Serial Monitor -->
+      <section class="card">
+        <div class="card-header">
+          <h3 class="card-title">Log Serial & Aktivitas Sistem</h3>
+          <div class="header-btns">
+            <button class="btn btn-sm btn-outline" id="btnClearLog">Bersihkan</button>
+            <button class="btn btn-sm btn-outline" id="btnExportLog">Unduh Log</button>
+          </div>
+        </div>
+
+        <div class="terminal-box-view" id="terminalLogBox">
+          <!-- Diisi via JS -->
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Modal Konfigurasi IP ESP32 -->
+  <div class="modal-backdrop" id="modalConfig" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-head">
+        <h4>Pengaturan Koneksi Hardware ESP32</h4>
+        <button class="btn-close" id="btnCloseModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">
+          Dashboard ini terhubung secara cloud ke ESP32 melalui endpoint API (<strong>/api/sics</strong>). ESP32 mengirimkan telemetri secara berkala dan mengambil antrean perintah kontrol.
+        </p>
+
+        <div class="form-item mb-3" style="margin-top: 12px;">
+          <label for="inputIp">Alamat Endpoint API:</label>
+          <div class="input-group">
+            <input type="text" id="inputIp" placeholder="Contoh: /api/sics atau https://polmedresearchcenter.id/api/sics">
+            <button class="btn btn-sm btn-secondary" id="btnPing">Tes Koneksi</button>
+          </div>
+          <span class="sub-hint">Secara default terhubung ke <code>/api/sics</code>. Jika dibuka dari file lokal, gunakan URL lengkap.</span>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="btnCancelModal">Batal</button>
+        <button class="btn btn-primary" id="btnSaveConfig">Simpan & Hubungkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifikasi Ringan -->
+  <div class="toast-area" id="toastArea"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
